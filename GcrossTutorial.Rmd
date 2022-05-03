@@ -1,0 +1,95 @@
+---
+title: "GFunction"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("spatstat")
+library("matlab")
+library("dplyr")
+library("stringr")
+library("ggplot2")
+library("pracma")
+
+```
+
+```{r}
+XYdata <- read.table("CODEX Data/1.csv", header = TRUE, sep = ",", fill = TRUE, row.names=NULL)
+head(XYdata)
+```
+
+```{r}
+colnames(XYdata)
+```
+
+```{r}
+xcol = "X.X"
+ycol = "Y.Y"
+phenotype = "ClusterName"
+radiusmax=300
+```
+
+```{r}
+unique(XYdata[,phenotype])
+```
+
+```{r}
+reference = "tumor cells"
+nonreference = "Tregs"
+```
+
+```{r}
+ggplot(XYdata[which(XYdata[,phenotype] == reference | XYdata[,phenotype] == nonreference),], aes_string(x=xcol, y=ycol, color=phenotype)) + geom_point()
+```
+
+
+```{r}
+cw <- convexhull.xy(XYdata[,xcol], XYdata[,ycol])
+ww <- owin(poly = cw$bdry)
+pp <- as.ppp(cbind(unlist(XYdata[,xcol]),unlist(XYdata[,ycol])), W = c(-1,2*max(XYdata[,xcol]),-1,2*max(XYdata[,ycol])))
+pp <- pp %mark% factor(unlist(XYdata[,phenotype]))
+pp$window <- ww
+
+```
+
+
+```{r}
+plot(pp)
+```
+
+
+```{r}
+Gcross1 = Gcross(pp,reference,nonreference,r = 0:radiusmax)
+```
+
+```{r}
+Gcross1
+```
+
+```{r}
+plot_data = data.frame(x = 0:radiusmax, actual=Gcross1$km, theo=Gcross1$theo)
+ggplot(data=plot_data) + geom_line(aes(x=x, y=actual), color="blue") + geom_line(aes(x=x, y=theo), color="gray")
+```
+
+
+
+
+```{r}
+rad = 30
+auc <- trapz(0:rad, t(Gcross1$km[1:(rad+1)]))
+```
+
+
+```{r}
+ggplot(plot_data) + geom_area(data = plot_data[1:100,], aes(x=x, y=actual), fill="lightblue") + geom_line(aes(x=x, y=actual), color="blue") 
+
+```
+
+
+
+
+

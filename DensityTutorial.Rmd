@@ -1,0 +1,86 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(spatstat)
+library(sp)
+library(reshape2)
+library(GWmodel)
+library(ggplot2)
+library(stringr)
+```
+
+KDE
+
+To better compare across samples, we want to make sure squares are the same size, so we'll set a square size and tell the algorithm 
+
+```{r}
+
+thres = 1e-4
+# kde_grid_size = c(25,25)
+square_size=10
+mincount=5
+
+# column names
+X_col = "X.X"
+Y_col = "Y.Y"
+pheno_col = "ClusterName"
+
+celltype = "tumor cells"
+
+```
+
+```{r}
+XYdata <- read.table("CODEX Data/1.csv", header = TRUE, sep = ",", fill = TRUE, row.names=NULL)
+head(XYdata)
+```
+
+
+```{r}
+xmin = min(XYdata[,X_col])
+  xmax = max(XYdata[,X_col])
+  ymin = min(XYdata[,Y_col])
+  ymax = max(XYdata[,Y_col])
+  
+  xstep = ceiling(xmax/square_size)
+  ystep = ceiling(ymax/square_size)
+  kde_grid_size = c(ystep,xstep )
+```
+
+
+```{r}
+dataPoints=XYdata[which(XYdata[,pheno_col] == celltype),]
+W = owin(c(xmin,xmax),c(ymin,ymax))
+ref_ppp = as.ppp(dataPoints[,c(X_col, Y_col)],W)
+kde_ref = density(ref_ppp, positive = T, dimyx=kde_grid_size)
+
+```
+
+```{r}
+kde_ref$v[1:5,1:5]
+```
+
+```{r}
+kde_values = kde_ref$v
+row.names(kde_values) = kde_ref$yrow
+colnames(kde_values) = kde_ref$xcol
+    
+values = melt(kde_values)
+colnames(values) <- c("Y", "X", celltype)
+```
+
+
+```{r}
+head(values)
+```
+```{r}
+ggplot() + geom_tile(data=values, aes(x=X, y=Y, color=`tumor cells`)) + geom_point(data=XYdata, aes_string(x=X_col, y=Y_col))
+```
+This can be easily adapted for any other kind of density-esque calculations, like GWR (link)
+

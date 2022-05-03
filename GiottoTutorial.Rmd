@@ -1,0 +1,149 @@
+---
+title: "Cell Proximity Enrichment on Non-ST Data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_knit$set(root.dir = '/tmp')
+knitr::opts_chunk$set(
+  fig.path = "images/"
+)
+```
+
+## Introduction
+
+[Giotto](https://rubd.github.io/Giotto_site/index.html) is a library intended for Spatial Transcriptomics data, but its Cell Proximity Enrichment functionality, which doesn't rely on gene expression, is useful for other data, such as spatial proteomics and H&E. 
+
+I'll be using the original CODEX data, which can be found [here](https://data.mendeley.com/datasets/mpjzbtfgfr/1) (and the original paper is [here](https://www.sciencedirect.com/science/article/pii/S0092867420308709#app2)). This workflow can be tweaked to work with any data that has X/Y coordinates and a discrete cell type.
+
+
+```{r include=TRUE, results = FALSE, message=FALSE, warning=FALSE}
+library("matlab")
+library("optparse")
+library("Giotto")
+library("reshape2")
+library("ggtern")
+library("akima")
+library("ggalluvial")
+library("igraph")
+library("stringr")
+library("Matrix")
+```
+
+## Data Overview
+
+First, we will read in the data. Make sure to change this to the location of the data. In this case, the spatial proteomics data for all samples is stored in one file. 
+
+```{r include=TRUE}
+raw_data = read.table("/Users/morganoneka/Dropbox (University of Michigan)/from_box/My Stuff/neighborhood_analysis/CODEX_data/data.csv", header=TRUE, sep=",", fill=TRUE, stringsAsFactors=FALSE)
+```
+
+```{r}
+head(raw_data[, c("Region", "X.X", "Y.Y", "ClusterName")])
+```
+
+
+For this workflow, we're going to run each sample separately, because even samples from the same patient are from different types of tissue. If you want to look at patients as a whole (i.e. combining all samples for one patient into one Giotto analysis), then you can add an offset to the X/Y coordinates and merge the data.frames together. 
+
+```{r include=TRUE}
+
+# column indicating sample name
+sample_col = "Region"
+
+# columns indicating X and Y coordinates of each individual cell
+X_col = "X.X"
+Y_col = "Y.Y"
+
+# column indicating cell type
+celltype_col = "ClusterName"
+
+columns = c(sample_col, X_col, Y_col, celltype_col)
+
+# how close do cells have to be to be considered neighbors? (i.e. how close to be interacting)
+# this will vary depending on your biological context and the units of your data
+stepsize = 50 
+
+# location to save enrichment output 
+output_directory ="/Users/morganoneka/Dropbox (University of Michigan)/from_box/My Stuff/neighborhood_analysis/CODEX_data/giotto_output/"
+```
+
+
+## Example and explanation
+We'll go through the first sample individually, then I'll include a loop that runs on the rest of the data.
+
+First, we'll subset our raw data to only get the first sample
+```{r include=TRUE}
+unique_regions = unique(raw_data[,sample_col])
+i=1
+current_sample = raw_data[which(raw_data[,sample_col] == unique_regions[i]), columns]
+```
+
+Next, we'll create our Giotto object. Giotto expects gene expression information as its first parameter, which we obviously don't have unless we are working with ST data. Since we aren't using any of the data that relies on gene expression, we'll create two vectors of random numbers.
+
+```{r echo=TRUE, results = FALSE, message=FALSE, warning=FALSE}
+current_sample$FakeGene = rnorm(nrow(current_sample)) + 5
+current_sample$FakeGene2 = rnorm(nrow(current_sample)) + 5
+
+go <- createGiottoObject(raw_exprs=t(current_sample[,c("FakeGene", "FakeGene2")]), 
+                         spatial_locs = current_sample[,c(X_col,Y_col)])
+
+
+```
+
+The spatial network will connect cells to their nearest neighbors. Nearest neighbors further than the cutoff are not connected. The cutoff I'm using is 50 units; this will need to be changed based on the units used in your data. 
+```{r include=TRUE}
+with_network <- createSpatialNetwork(go)
+with_spatialgrid <- createSpatialGrid(with_network, sdimx_stepsize = stepsize, sdimy_stepsize = stepsize)
+```
+
+Next, we'll add phenotype information based on our celltype column. These are the labels that Giotto will use when calculating cell proximity enrichment.
+```{r include=TRUE}
+with_phenotype <- with_spatialgrid
+with_phenotype@cell_metadata$phenotype <- current_sample[,celltype_col]
+```
+
+Finally, we'll run the cell proximity enrichment code from Giotto.
+```{r include=TRUE}
+cell_prox_enrich <- cellProximityEnrichment(with_phenotype, cluster_column="phenotype")
+
+head(cell_prox_enrich$enrichm_res)
+```
+
+Each interaction is named in the `unified-int` column, with the cell types separated by ``--``. The enrichment score is found in the `enrichm` column. The `p_higher_orig` indicates the p-value for testing if the cell pair is enriched, while `p_lower_orig` indicates the p-value for testing if the cell pair is depleted.
+
+```{r include=TRUE}
+cell_prox_enrich$enrichm_res$cell1 = str_split_fixed(cell_prox_enrich$enrichm_res$unified_int, "--", 2)[,1]
+cell_prox_enrich$enrichm_res$cell2 = str_split_fixed(cell_prox_enrich$enrichm_res$unified_int, "--", 2)[,2]
+to_write_out <- cell_prox_enrich$enrichm[,c("cell1", "cell2","enrichm", "p_higher_orig", "p_lower_orig", "PI_value")]
+write.table(to_write_out[order(-abs(to_write_out$enrichm)),],file=fullfile(output_directory, paste(unique_regions[i], "interaction_enrichment.txt", sep="")), sep="\t", row.names=FALSE, quote=FALSE)
+```
+
+## Running on the rest of the data
+
+The following will iterate through the rest of the samples and run cell proximity enrichment.
+
+```{r include=TRUE, results = FALSE, message=FALSE, warning=FALSE}
+for (i in 2:length(unique_regions)){
+  current_sample = raw_data[which(raw_data[,sample_col] == unique_regions[i]), columns]
+  current_sample$FakeGene = rnorm(nrow(current_sample)) + 5
+  current_sample$FakeGene2 = rnorm(nrow(current_sample)) + 5
+
+  go <- createGiottoObject(raw_exprs=t(current_sample[,c("FakeGene", "FakeGene2")]),
+                           spatial_locs = current_sample[,c(X_col,Y_col)])
+  
+  with_network <- createSpatialNetwork(go)
+  with_spatialgrid <- createSpatialGrid(with_network, sdimx_stepsize = stepsize, sdimy_stepsize = stepsize)
+  with_phenotype <- with_spatialgrid
+  with_phenotype@cell_metadata$phenotype <- current_sample[,celltype_col]
+  cell_prox_enrich <- cellProximityEnrichment(with_phenotype, cluster_column="phenotype")
+  cell_prox_enrich$enrichm_res$cell1 = str_split_fixed(cell_prox_enrich$enrichm_res$unified_int, "--", 2)[,1]
+  cell_prox_enrich$enrichm_res$cell2 = str_split_fixed(cell_prox_enrich$enrichm_res$unified_int, "--", 2)[,2]
+  to_write_out <- cell_prox_enrich$enrichm[,c("cell1", "cell2","enrichm", "p_higher_orig", "p_lower_orig", "PI_value")]
+  write.table(to_write_out[order(-abs(to_write_out$enrichm)),],file=fullfile(output_directory, paste(unique_regions[i], "interaction_enrichment.txt", sep="")), sep="\t", row.names=FALSE, quote=FALSE)
+}
+
+
+```
+
+
