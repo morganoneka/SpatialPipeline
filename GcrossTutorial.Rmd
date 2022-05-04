@@ -5,47 +5,51 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
 library("spatstat")
 library("matlab")
 library("dplyr")
 library("stringr")
 library("ggplot2")
 library("pracma")
-
 ```
 
+First, we want to read in our data. This assumes that a file contains data for only one sample.
 ```{r}
 XYdata <- read.table("CODEX Data/1.csv", header = TRUE, sep = ",", fill = TRUE, row.names=NULL)
 head(XYdata)
 ```
 
 ```{r}
-colnames(XYdata)
-```
-
-```{r}
+# columns in dataset that contain X/Y values
 xcol = "X.X"
 ycol = "Y.Y"
+
+# column that identifies cell type
 phenotype = "ClusterName"
+
+# how far do we want to calculate AUC — see later in the tutorial
 radiusmax=300
 ```
+
+What cell types do we want to study the relationship of? We can first look at what cell types we have.
 
 ```{r}
 unique(XYdata[,phenotype])
 ```
+
+The "infiltrating" cells constitute the *nonreference* cell type. The cells that are being infiltrated into are the *reference* cell type.
 
 ```{r}
 reference = "tumor cells"
 nonreference = "Tregs"
 ```
 
+Before going any further, we can plot the X/Y coordinates. Note that for most data, the Y coordinate is flipped, meaning that the origin is at the top left of the image rather than the bottom left, so plotting may produce a mirror of the original image. The intent here is just to get a sense of what we expect our results might look like — i.e., can we see an obvious clustering together of our two cell types — so the actual coordinates aren't terribly important. 
+
 ```{r}
 ggplot(XYdata[which(XYdata[,phenotype] == reference | XYdata[,phenotype] == nonreference),], aes_string(x=xcol, y=ycol, color=phenotype)) + geom_point()
 ```
-
+Next, we'll create our point pattern process.
 
 ```{r}
 cw <- convexhull.xy(XYdata[,xcol], XYdata[,ycol])
@@ -56,11 +60,10 @@ pp$window <- ww
 
 ```
 
-
 ```{r}
 plot(pp)
 ```
-
+Running the Gcross function is pretty simple! It just needs our point pattern process, the names of our two cell types of interest (NOTE: the order is important!), and how far out we want to calculate this function.
 
 ```{r}
 Gcross1 = Gcross(pp,reference,nonreference,r = 0:radiusmax)
@@ -70,15 +73,20 @@ Gcross1 = Gcross(pp,reference,nonreference,r = 0:radiusmax)
 Gcross1
 ```
 
+We get a few curves, but we'll focus on the Kaplan-Meier estimate of our curve, and the theoretical curve. The theoretical curve shows what our Gcross curve would look life if our two cell types were located at entirely random places in the sample. 
+
+If our curve is above the theoretical curve, that indicates a higher level of infiltration than expected at random. If our curve is below the theoretical curve, that indicates a lower level of infiltration than expected at random.
+
 ```{r}
 plot_data = data.frame(x = 0:radiusmax, actual=Gcross1$km, theo=Gcross1$theo)
 ggplot(data=plot_data) + geom_line(aes(x=x, y=actual), color="blue") + geom_line(aes(x=x, y=theo), color="gray")
 ```
 
 
-
+The AUC, area under the curve, provides a single metric that can be used in downstream analysis. The AUC will be higher in patients with high infiltration, and lower in patients with low infiltration. The Gcross AUC has been a useful biomarker in several papers I've worked on.
 
 ```{r}
+# calculating the AUC at 30 units
 rad = 30
 auc <- trapz(0:rad, t(Gcross1$km[1:(rad+1)]))
 ```

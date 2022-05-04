@@ -1,29 +1,25 @@
 ---
-title: "Untitled"
+title: "Cell Type Density"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
 
-```{r}
 library(spatstat)
 library(sp)
 library(reshape2)
 library(GWmodel)
 library(ggplot2)
 library(stringr)
+library('plot.matrix')
 ```
-
-KDE
 
 To better compare across samples, we want to make sure squares are the same size, so we'll set a square size and tell the algorithm 
 
 ```{r}
-
+# parameters for density estimation
 thres = 1e-4
-# kde_grid_size = c(25,25)
 square_size=10
 mincount=5
 
@@ -32,6 +28,7 @@ X_col = "X.X"
 Y_col = "Y.Y"
 pheno_col = "ClusterName"
 
+# cell type we're calculating density  for
 celltype = "tumor cells"
 
 ```
@@ -41,19 +38,20 @@ XYdata <- read.table("CODEX Data/1.csv", header = TRUE, sep = ",", fill = TRUE, 
 head(XYdata)
 ```
 
+To calculate the number of grids we need, we identify the range for X and Y coordinates, then calculate the appopriate step size.
 
 ```{r}
 xmin = min(XYdata[,X_col])
-  xmax = max(XYdata[,X_col])
-  ymin = min(XYdata[,Y_col])
-  ymax = max(XYdata[,Y_col])
+xmax = max(XYdata[,X_col])
+ymin = min(XYdata[,Y_col])
+ymax = max(XYdata[,Y_col])
   
-  xstep = ceiling(xmax/square_size)
-  ystep = ceiling(ymax/square_size)
-  kde_grid_size = c(ystep,xstep )
+xstep = ceiling(xmax/square_size)
+ystep = ceiling(ymax/square_size)
+kde_grid_size = c(ystep,xstep )
 ```
 
-
+Next, we create our point pattern process as calculate density with respect to our cell type of interest.
 ```{r}
 dataPoints=XYdata[which(XYdata[,pheno_col] == celltype),]
 W = owin(c(xmin,xmax),c(ymin,ymax))
@@ -65,6 +63,15 @@ kde_ref = density(ref_ppp, positive = T, dimyx=kde_grid_size)
 ```{r}
 kde_ref$v[1:5,1:5]
 ```
+
+The original output is an nxn matrix, where n is the number of grids. This is more of an "image" style format.
+
+```{r}
+# since we loaded the plot.matrix package, this will be used instead of the base R plotting tool
+plot(kde_ref$v, border=NA)
+```
+
+But we also might want to melt this matrix, i.e. convert it to a matrix/df where each row contains an X/Y coordinate and then the density value at that coordinate. This format is really helpful if you want to calculate & compare multiple densities at the same coordinate.
 
 ```{r}
 kde_values = kde_ref$v
@@ -79,8 +86,18 @@ colnames(values) <- c("Y", "X", celltype)
 ```{r}
 head(values)
 ```
+The "melted" format is also the format that works with ggplot2.
+
 ```{r}
-ggplot() + geom_tile(data=values, aes(x=X, y=Y, color=`tumor cells`)) + geom_point(data=XYdata, aes_string(x=X_col, y=Y_col))
+ggplot() + geom_tile(data=values, aes(x=X, y=Y, fill=`tumor cells`)) + geom_point(data=XYdata, aes_string(x=X_col, y=Y_col))
 ```
-This can be easily adapted for any other kind of density-esque calculations, like GWR (link)
+
+This can be easily adapted for any other kind of density-esque calculations, like [GWR](https://cran.r-project.org/web/packages/spgwr/vignettes/GWR.pdf).
+
+
+
+
+
+
+
 
