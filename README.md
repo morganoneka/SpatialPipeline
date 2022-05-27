@@ -1,7 +1,7 @@
 # Spatial Cell Patterns Pipeline
 Here are tutorials covering a few key elements of my work studying spatial relationships between cell types! These workflows are intended for usage with data that A) has spatial X/Y coordinates, and B) has a discrete notion of cell type.
 
-To learn more about applications, see [my website](morganoneka.github.io/).
+This code was used for my analyses for papers in [The Journal for ImmunoTherapy in Cancer](https://jitc.bmj.com/content/8/Suppl_3/A332), [Translational Research and Biomarkers](https://link.springer.com/article/10.1245/s10434-019-07508-3), and [Frontiers in Immunology](https://www.frontiersin.org/articles/10.3389/fimmu.2021.727610/full#h3).
 
 Data is the CODEX data used in [this paper](https://www.sciencedirect.com/science/article/pii/S0092867420308709), split by patient.
 
